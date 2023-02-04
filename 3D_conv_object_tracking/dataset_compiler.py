@@ -82,6 +82,7 @@ class dataset_compiler():
 
                             ### Add Groundtruth Label Processing #######################
 
+                            #(YOLO 라벨 구현내용 추가)
 
                             ############################################################
 
