@@ -59,8 +59,6 @@ class Object_Tracking_Net(nn.Module):
         out_activation_3 = self.activation_3(out_batchnorm3d_3)
         self.local_print('out_activation_3 : {}'.format(out_activation_3.size()), level='high')
 
-
-
     def local_print(self, sen, level='low'):
 
         if self.verbose == 'high': print(sen)
