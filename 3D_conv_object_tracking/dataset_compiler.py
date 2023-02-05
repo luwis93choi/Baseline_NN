@@ -87,7 +87,7 @@ class dataset_compiler():
                             ############################################################
 
                             img_path_list = [img_base_path + '/' + img_data_name_prev[idx-skip_count], 
-                                             img_base_path + '/' + img_data_name_prev[idx]]
+                                             img_base_path + '/' + img_data_name_current[idx]]
 
                             img_path_group.create_dataset(name=str(data_idx).zfill(10),
                                                           data=img_path_list,

@@ -47,7 +47,7 @@ class object_tracking_dataset(torch.utils.data.Dataset):
         idx = str(index).zfill(10)
 
         ### Input Image Preparation ###
-        img_path_list = self.img_path_group[str(idx).zfill(10)][()]
+        img_path_list = self.img_path_group[idx][()]
 
         img_path_prev = str(img_path_list[0], 'utf-8')
         img_path_current = str(img_path_list[1], 'utf-8')
@@ -62,7 +62,7 @@ class object_tracking_dataset(torch.utils.data.Dataset):
         input_img_prev = input_img_prev / 255
         self.local_print('input_img_prev : {}'.format(input_img_prev.shape), level='high')
 
-        input_img_current = cv.imread(img_path_prev, cv.IMREAD_COLOR)
+        input_img_current = cv.imread(img_path_current, cv.IMREAD_COLOR)
         input_img_current = cv.resize(input_img_current, (192, 640))
         input_img_current = np.transpose(input_img_current, (2, 0, 1))
         input_img_current = np.expand_dims(input_img_current, axis=1)
@@ -80,7 +80,7 @@ class object_tracking_dataset(torch.utils.data.Dataset):
         ############################################################
 
         return stacked_input_img
-        # return stacked_input_img, groundtruth_label)
+        # return stacked_input_img, groundtruth_label
 
     def __len__(self):
 
