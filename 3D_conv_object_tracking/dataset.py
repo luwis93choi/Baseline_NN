@@ -11,7 +11,7 @@ class object_tracking_dataset(torch.utils.data.Dataset):
 
     def __init__(self, dataset_save_path='',
                        mode='train',
-                       verbosity='low'):
+                       verbose='low'):
         
         self.dataset_save_path = dataset_save_path
 
@@ -19,7 +19,7 @@ class object_tracking_dataset(torch.utils.data.Dataset):
 
         self.mode = mode
 
-        self.verbose = verbosity
+        self.verbose = verbose
 
         if self.mode == 'train':
             self.img_path_group = self.dataset_file['/train_group/img_path']
@@ -56,25 +56,31 @@ class object_tracking_dataset(torch.utils.data.Dataset):
         self.local_print(img_path_current, level='high')
 
         input_img_prev = cv.imread(img_path_prev, cv.IMREAD_COLOR)
+        input_img_prev = cv.resize(input_img_prev, (192, 640))
         input_img_prev = np.transpose(input_img_prev, (2, 0, 1))
+        input_img_prev = np.expand_dims(input_img_prev, axis=1)
         input_img_prev = input_img_prev / 255
         self.local_print('input_img_prev : {}'.format(input_img_prev.shape), level='high')
 
         input_img_current = cv.imread(img_path_prev, cv.IMREAD_COLOR)
+        input_img_current = cv.resize(input_img_current, (192, 640))
         input_img_current = np.transpose(input_img_current, (2, 0, 1))
+        input_img_current = np.expand_dims(input_img_current, axis=1)
         input_img_current = input_img_current / 255
         self.local_print('input_img_current : {}'.format(input_img_current.shape), level='high')
 
-        stacked_input_img = np.concatenate((input_img_prev, input_img_current), axis=0)
+        stacked_input_img = np.concatenate((input_img_prev, input_img_current), axis=1)
         self.local_print('stacked_input_img : {}'.format(stacked_input_img.shape), level='high')
 
         ### Groundtruth Label __getitem__ ##########################
 
         #(YOLO 라벨 구현내용 추가)
+        #(YOLO 라벨을 return에 추가해야함
 
         ############################################################
 
         return stacked_input_img
+        # return stacked_input_img, groundtruth_label)
 
     def __len__(self):
 
