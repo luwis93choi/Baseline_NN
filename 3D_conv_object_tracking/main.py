@@ -12,6 +12,7 @@ from dataset import object_tracking_dataset
 
 from model import Object_Tracking_Net
 
+### Hyper Parameter ###
 BATCH_SIZE = 32
 EPOCH = 100
 
@@ -30,12 +31,6 @@ dataset_compiler(dataset_save_path='./dataset.hdf5',
                  test_sequence=['0016', '0017', '0018', '0019', '0020'],
                  skip_count=1,
                  verbose='low')
-
-test = h5py.File('./dataset.hdf5', 'r')
-
-temp = test['/train_group/img_path']
-
-print(temp[str(0).zfill(10)][()])
 
 train_set = object_tracking_dataset(dataset_save_path='./dataset.hdf5', mode='train', verbose='low')
 train_dataloader = DataLoader(dataset=train_set, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
