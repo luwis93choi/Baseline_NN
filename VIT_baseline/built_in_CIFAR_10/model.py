@@ -36,11 +36,11 @@ class ViT_CIFAR_10(nn.Module):
         if (self.total_patch_num % transformer_nhead) != 0:
             raise Exception('Total patch number is not divisible by number of transformer heads / Patches have to be equally distributed among transformer heads')
 
-        self.embedding_size = patch_width * patch_height
+        self.embedding_size = patch_width * patch_height * input_channel
 
-        self.cls_embedding = nn.Parameter(torch.randn(input_batchsize, 1, self.embedding_size))
+        self.cls_embedding = nn.Parameter(torch.zeros(input_batchsize, 1, self.embedding_size))
 
-        self.positional_embedding = nn.Parameter(torch.randn(input_batchsize, self.total_patch_num + 1, self.embedding_size))
+        self.positional_embedding = nn.Parameter(torch.zeros(input_batchsize, self.total_patch_num + 1, self.embedding_size))
 
         self.patch_embedder_layer = nn.Conv2d(in_channels=input_channel, out_channels=self.embedding_size, 
                                               kernel_size=(patch_height, patch_width), 
@@ -52,13 +52,14 @@ class ViT_CIFAR_10(nn.Module):
                                                                     nhead=transformer_nhead,
                                                                     dim_feedforward=transforemr_internal_feedforward_embedding,
                                                                     dropout=transformer_dropout,
-                                                                    activation=transformer_activation)
+                                                                    activation=transformer_activation,
+                                                                    batch_first=True)
 
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer=unit_transformer_encoder_layer,
                                                          num_layers=transformer_encoder_layer_num)
 
-        self.classification_layer = nn.Linear(in_features=self.embedding_size, out_features=output_label_num, bias=classification_layer_bias)
-
+        self.classification_layer_1 = nn.Linear(in_features=self.embedding_size, out_features=output_label_num, bias=classification_layer_bias)
+        
     def forward(self, input_img):
 
         self.local_print('input_img : {}'.format(input_img.size()), level='high')
@@ -86,12 +87,12 @@ class ViT_CIFAR_10(nn.Module):
         cls_patch_output = transformer_encoder_output[:, 0, :]
         self.local_print('cls_patch_output : {}'.format(cls_patch_output.size()), level='high')
 
-        classification_output = self.classification_layer(cls_patch_output)
-        self.local_print('classification_output : {}'.format(classification_output.size()), level='high')
+        classification_output_1 = self.classification_layer_1(cls_patch_output)
+        self.local_print('classification_output_1 : {}'.format(classification_output_1.size()), level='high')
 
         self.local_print('--------------------------', level='high')
 
-        return classification_output
+        return classification_output_1
 
     def local_print(self, sen, level='low'):
 
