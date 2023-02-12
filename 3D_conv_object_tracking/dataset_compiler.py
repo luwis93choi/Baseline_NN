@@ -11,8 +11,8 @@ class dataset_compiler():
     def __init__(self, dataset_save_path='',
                        image_dataset_path='',
                        groundtruth_dataset_path='',
-                       original_input_image_height=192,
-                       original_input_image_width=640,
+                       original_input_image_height=375,
+                       original_input_image_width=1242,
                        output_grid_height=12,
                        output_grid_width=40,
                        train_sequence=['0000'],
@@ -101,25 +101,29 @@ class dataset_compiler():
 
                             groundtruth_label_matrix = np.zeros((output_grid_height, output_grid_width, label_matrix_channel), dtype=float)
                             
+                            temp_groundtruth_label_matrix = np.zeros((output_grid_height, output_grid_width, 3), dtype=np.uint8)
+
                             groundtruth_idx = np.where(groundtruth_matrix[:, 0] == str(idx))
 
                             current_labels = groundtruth_matrix[groundtruth_idx, :]
                             print(idx)
                             print(current_labels.shape)
 
+                            test_img = cv.imread(img_base_path + '/' + current_img)
+
                             for label in current_labels[0, :, :]:
 
                                 if label[2] == 'DontCare': pass
                                 else:
                                     # Target Class Assignment
-                                    if label[2] == 'Car':               class_type = 0
-                                    elif label[2] == 'Van':             class_type = 1
-                                    elif label[2] == 'Truck':           class_type = 2
-                                    elif label[2] == 'Pedestrian':      class_type = 3
-                                    elif label[2] == 'Person_sitting':  class_type = 4
-                                    elif label[2] == 'Cyclist':         class_type = 5
-                                    elif label[2] == 'Tram':            class_type = 6
-                                    elif label[2] == 'Misc':            class_type = 7
+                                    if label[2] == 'Car':               class_type = 1
+                                    elif label[2] == 'Van':             class_type = 2
+                                    elif label[2] == 'Truck':           class_type = 3
+                                    elif label[2] == 'Pedestrian':      class_type = 4
+                                    elif label[2] == 'Person_sitting':  class_type = 5
+                                    elif label[2] == 'Cyclist':         class_type = 6
+                                    elif label[2] == 'Tram':            class_type = 7
+                                    elif label[2] == 'Misc':            class_type = 8
 
                                     # Objectness Assignment based on Occulusion Label
                                     if label[4] == '0':       objectness = 1      # Fully Visible
@@ -127,7 +131,51 @@ class dataset_compiler():
                                     elif label[4] == '2':     objectness = 0.3    # Largely Occuluded
                                     elif label[4] == '3':     objectness = 0      # Unknown
 
+                                    bbox_left_x = float(label[6])
+                                    bbox_top_y = float(label[7])
+                                    bbox_right_x = float(label[8])
+                                    bbox_bottom_y = float(label[9])
+
+                                    
+                                    bbox_left_x_grid = int(np.floor((output_grid_width - 1) * (bbox_left_x / original_input_image_width)))
+                                    bbox_top_y_grid = int(np.floor((output_grid_height - 1) * (bbox_top_y / original_input_image_height)))
+                                    bbox_right_x_grid = int(np.floor((output_grid_width - 1) * (bbox_right_x / original_input_image_width)))
+                                    bbox_bottom_y_grid = int(np.floor((output_grid_height - 1) * (bbox_bottom_y / original_input_image_height)))
+
+                                    groundtruth_label_matrix[bbox_top_y_grid:bbox_bottom_y_grid+1, bbox_left_x_grid:bbox_right_x_grid+1, 0] = objectness
+                                    groundtruth_label_matrix[bbox_top_y_grid:bbox_bottom_y_grid+1, bbox_left_x_grid:bbox_right_x_grid+1, class_type] = 1.0
+
+                                    temp_groundtruth_label_matrix[bbox_top_y_grid:bbox_bottom_y_grid+1, bbox_left_x_grid:bbox_right_x_grid+1, 0:3] = 255
+                                    
+
+                                    '''
+                                    center_x = (bbox_left_x + bbox_right_x) / 2
+                                    center_y = (bbox_top_y + bbox_bottom_y) / 2
+
+                                    if center_x >= original_input_image_width: center_x = original_input_image_width
+                                    if center_y >= original_input_image_height: center_y = original_input_image_height
+
+                                    center_x_grid = int(np.floor((output_grid_width - 1) * (center_x / original_input_image_width)))
+                                    center_y_grid = int(np.floor((output_grid_height - 1) * (center_y / original_input_image_height)))
+
+                                    groundtruth_label_matrix[center_y_grid, center_x_grid, 0] = objectness
+                                    groundtruth_label_matrix[center_y_grid, center_x_grid, class_type] = 1.0
+
+                                    cv.circle(test_img, (int(original_input_image_width * (center_x_grid / output_grid_width)), int(original_input_image_height * (center_y_grid / output_grid_height))), 10, (0, 255, 0), 3)
+                                    '''
+
+                                    #cv.circle(test_img, (int(center_x), int(center_y)), 10, (0, 255, 0), 3)
+
                                     print(objectness)
+                            
+                            print(test_img.dtype)
+                            temp_groundtruth_label_matrix = cv.resize(temp_groundtruth_label_matrix, (original_input_image_width, original_input_image_height))
+                            print(temp_groundtruth_label_matrix.shape)
+                            print(test_img.shape)
+                            added_img = cv.addWeighted(test_img, 0.2, temp_groundtruth_label_matrix, 0.6, 0)
+                            cv.imwrite('./test.png', added_img)
+
+                            print(groundtruth_label_matrix)
 
                             print('----------------')
 
@@ -138,6 +186,10 @@ class dataset_compiler():
                             img_path_group.create_dataset(name=str(data_idx).zfill(10),
                                                           data=img_path_list,
                                                           compression='gzip', compression_opts=9)
+
+                            groundtruth_group.create_dataset(name=str(data_idx).zfill(10),
+                                                             data=groundtruth_label_matrix,
+                                                             compression='gzip', compression_opts=9)
 
                             data_idx += 1
 
