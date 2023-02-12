@@ -19,7 +19,7 @@ import numpy as np
 BATCH_SIZE = 32
 EPOCH = 1000
 
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-5
 
 THREAD_NUM = 4
 
@@ -67,8 +67,8 @@ vit_cifar_10 = ViT_CIFAR_10(input_width=input_img_width, input_height=input_img_
                             transformer_nhead=16,
                             transforemr_internal_feedforward_embedding=2048,
                             transformer_dropout=0.3,
-                            transformer_activation='gelu',
-                            transformer_encoder_layer_num=8,
+                            transformer_activation='relu',
+                            transformer_encoder_layer_num=12,
                             classification_layer_bias=True,
                             device=processor,
                             verbose='low')
@@ -77,7 +77,7 @@ vit_cifar_10.to(processor)
 
 optimizer = optim.Adam(vit_cifar_10.parameters(), lr=LEARNING_RATE)
 
-LR_scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=5)
+LR_scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=10)
 
 loss_function = nn.CrossEntropyLoss()
 
@@ -113,7 +113,9 @@ for epoch in range(EPOCH):
 
         optimizer.step()
 
-        output_class = torch.argmax(output_vector, dim=1)        
+        output_prob = vit_cifar_10.softmax_layer(output_vector)
+
+        output_class = torch.argmax(output_prob, dim=1)        
 
         train_accuracy = (torch.sum(output_class == label).item() / BATCH_SIZE) * 100
         
@@ -136,9 +138,11 @@ for epoch in range(EPOCH):
             
             output_vector = vit_cifar_10(image)
 
+            output_prob = vit_cifar_10.softmax_layer(output_vector)
+
             loss_val = loss_function(output_vector, label)
             
-            output_class = torch.argmax(output_vector, dim=1)        
+            output_class = torch.argmax(output_prob, dim=1)        
 
             test_accuracy = (torch.sum(output_class == label).item() / BATCH_SIZE) * 100
             
