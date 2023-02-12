@@ -2,6 +2,8 @@ import torch
 
 import torch.nn as nn
 
+import numpy as np
+
 class ViT_CIFAR_10(nn.Module):
     
     def __init__(self, input_width=32,
@@ -40,7 +42,16 @@ class ViT_CIFAR_10(nn.Module):
 
         self.cls_embedding = nn.Parameter(torch.zeros(input_batchsize, 1, self.embedding_size))
 
-        self.positional_embedding = nn.Parameter(torch.zeros(input_batchsize, self.total_patch_num + 1, self.embedding_size))
+        # Positional Embedding Generation (Reference : https://medium.com/mlearning-ai/vision-transformers-from-scratch-pytorch-a-step-by-step-guide-96c3313c2e0c)
+        self.single_positional_embedding = torch.ones(1, self.total_patch_num + 1, self.embedding_size)
+
+        for i in range(self.total_patch_num + 1):
+            for j in range(self.embedding_size):
+                self.single_positional_embedding[0][i][j] = np.sin(i / (10000 ** (j/self.embedding_size))) if j % 2 == 0 else np.cos(i / (10000 ** ((j - i) / self.embedding_size)))
+
+        self.positional_embedding = nn.Parameter(self.single_positional_embedding.repeat(input_batchsize, 1, 1))
+
+        #self.positional_embedding = nn.Parameter(torch.zeros(input_batchsize, self.total_patch_num + 1, self.embedding_size))
 
         self.patch_embedder_layer = nn.Conv2d(in_channels=input_channel, out_channels=self.embedding_size, 
                                               kernel_size=(patch_height, patch_width), 
@@ -60,6 +71,8 @@ class ViT_CIFAR_10(nn.Module):
 
         self.classification_layer_1 = nn.Linear(in_features=self.embedding_size, out_features=output_label_num, bias=classification_layer_bias)
         
+        self.softmax_layer = nn.Softmax(dim=1)
+
     def forward(self, input_img):
 
         self.local_print('input_img : {}'.format(input_img.size()), level='high')
