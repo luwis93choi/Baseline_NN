@@ -9,10 +9,13 @@ from tqdm import tqdm
 class dataset_compiler():
 
     def __init__(self, dataset_save_path='',
-                       image_dataset_path='',
+                       current_image_dataset_path='',
+                       prev_image_dataset_path='',
                        groundtruth_dataset_path='',
                        original_input_image_height=375,
                        original_input_image_width=1242,
+                       target_input_image_height=192,
+                       target_input_image_width=640,
                        output_grid_height=12,
                        output_grid_width=40,
                        train_sequence=['0000'],
@@ -23,7 +26,8 @@ class dataset_compiler():
 
         self.dataset_save_path = dataset_save_path
 
-        self.image_dataset_path = image_dataset_path
+        self.current_image_dataset_path = current_image_dataset_path
+        self.prev_image_dataset_path = prev_image_dataset_path
         self.groundtruth_dataset_path = groundtruth_dataset_path
 
         self.train_sequence = train_sequence
@@ -63,12 +67,13 @@ class dataset_compiler():
 
                     ### Image Path Accumulation ###
                     self.local_print('[Dataset Compiler] Type : {} | Image Data Sequence : {}'.format(group.name, sequence), level='low')
-                    img_base_path = self.image_dataset_path + '/' + sequence
+                    current_img_base_path = self.current_image_dataset_path + '/' + sequence
+                    prev_img_base_path = self.prev_image_dataset_path + '/' + sequence
                     
-                    data_length = len(sorted(os.listdir(img_base_path)))
+                    data_length = len(sorted(os.listdir(current_img_base_path)))
                     
-                    img_data_name_prev = sorted(os.listdir(img_base_path))[1:]
-                    img_data_name_current = sorted(os.listdir(img_base_path))[:data_length-1]
+                    img_data_name_prev = sorted(os.listdir(prev_img_base_path))[1:]
+                    img_data_name_current = sorted(os.listdir(current_img_base_path))[:data_length-1]
 
                     self.local_print('{}'.format(img_data_name_prev), level='high')
                     self.local_print('{}'.format(img_data_name_current), level='high')
@@ -99,89 +104,80 @@ class dataset_compiler():
                             
                             label_matrix_channel = occulded_label_num + class_label_num
 
-                            groundtruth_label_matrix = np.zeros((output_grid_height, output_grid_width, label_matrix_channel), dtype=float)
-                            
-                            temp_groundtruth_label_matrix = np.zeros((output_grid_height, output_grid_width, 3), dtype=np.uint8)
+                            if self.verbose == 'high':
+                                groundtruth_objectness_mask_img = np.zeros((original_input_image_height, original_input_image_width, 3), dtype=np.uint8)
+
+                            else:
+                                groundtruth_objectness_mask_img = np.zeros((original_input_image_height, original_input_image_width, 1), dtype=np.uint8)
+
+                            groundtruth_class_label_img = np.zeros((original_input_image_height, original_input_image_width, 1), dtype=np.uint8)
 
                             groundtruth_idx = np.where(groundtruth_matrix[:, 0] == str(idx))
 
                             current_labels = groundtruth_matrix[groundtruth_idx, :]
-                            print(idx)
-                            print(current_labels.shape)
 
-                            test_img = cv.imread(img_base_path + '/' + current_img)
+                            if self.verbose == 'high':
+
+                                test_img = cv.imread(current_img_base_path + '/' + current_img)
+                                test_img = cv.resize(test_img, (target_input_image_width, target_input_image_height), interpolation=cv.INTER_AREA)
+                                self.local_print(test_img.shape, level='high')
 
                             for label in current_labels[0, :, :]:
 
                                 if label[2] == 'DontCare': pass
                                 else:
                                     # Target Class Assignment
-                                    if label[2] == 'Car':               class_type = 1
-                                    elif label[2] == 'Van':             class_type = 2
-                                    elif label[2] == 'Truck':           class_type = 3
-                                    elif label[2] == 'Pedestrian':      class_type = 4
-                                    elif label[2] == 'Person_sitting':  class_type = 5
-                                    elif label[2] == 'Cyclist':         class_type = 6
-                                    elif label[2] == 'Tram':            class_type = 7
-                                    elif label[2] == 'Misc':            class_type = 8
+                                    if label[2] == 'Car':               class_type = 0
+                                    elif label[2] == 'Van':             class_type = 1
+                                    elif label[2] == 'Truck':           class_type = 2
+                                    elif label[2] == 'Pedestrian':      class_type = 3
+                                    elif label[2] == 'Person_sitting':  class_type = 4
+                                    elif label[2] == 'Cyclist':         class_type = 5
+                                    elif label[2] == 'Tram':            class_type = 6
+                                    elif label[2] == 'Misc':            class_type = 7
 
                                     # Objectness Assignment based on Occulusion Label
-                                    if label[4] == '0':       objectness = 1      # Fully Visible
-                                    elif label[4] == '1':     objectness = 0.7    # Partially Occuluded
-                                    elif label[4] == '2':     objectness = 0.3    # Largely Occuluded
-                                    elif label[4] == '3':     objectness = 0      # Unknown
+                                    if (label[4] == '0') or (label[4] == '1') or (label[4] == '2'):      # Fully Visible or Partially Occuluded      
 
-                                    bbox_left_x = float(label[6])
-                                    bbox_top_y = float(label[7])
-                                    bbox_right_x = float(label[8])
-                                    bbox_bottom_y = float(label[9])
+                                        bbox_left_x = int(float(label[6]))
+                                        bbox_top_y = int(float(label[7]))
+                                        bbox_right_x = int(float(label[8]))
+                                        bbox_bottom_y = int(float(label[9]))
 
-                                    
-                                    bbox_left_x_grid = int(np.floor((output_grid_width - 1) * (bbox_left_x / original_input_image_width)))
-                                    bbox_top_y_grid = int(np.floor((output_grid_height - 1) * (bbox_top_y / original_input_image_height)))
-                                    bbox_right_x_grid = int(np.floor((output_grid_width - 1) * (bbox_right_x / original_input_image_width)))
-                                    bbox_bottom_y_grid = int(np.floor((output_grid_height - 1) * (bbox_bottom_y / original_input_image_height)))
+                                        if self.verbose == 'high':
+                                            groundtruth_objectness_mask_img[bbox_top_y:bbox_bottom_y+1, bbox_left_x:bbox_right_x+1, 0:3] = 255
+                                        else:
+                                            groundtruth_objectness_mask_img[bbox_top_y:bbox_bottom_y+1, bbox_left_x:bbox_right_x+1, 0] = 1
 
-                                    groundtruth_label_matrix[bbox_top_y_grid:bbox_bottom_y_grid+1, bbox_left_x_grid:bbox_right_x_grid+1, 0] = objectness
-                                    groundtruth_label_matrix[bbox_top_y_grid:bbox_bottom_y_grid+1, bbox_left_x_grid:bbox_right_x_grid+1, class_type] = 1.0
+                                        groundtruth_class_label_img[bbox_top_y:bbox_bottom_y+1, bbox_left_x:bbox_right_x+1, 0] = class_type
 
-                                    temp_groundtruth_label_matrix[bbox_top_y_grid:bbox_bottom_y_grid+1, bbox_left_x_grid:bbox_right_x_grid+1, 0:3] = 255
-                                    
-
-                                    '''
-                                    center_x = (bbox_left_x + bbox_right_x) / 2
-                                    center_y = (bbox_top_y + bbox_bottom_y) / 2
-
-                                    if center_x >= original_input_image_width: center_x = original_input_image_width
-                                    if center_y >= original_input_image_height: center_y = original_input_image_height
-
-                                    center_x_grid = int(np.floor((output_grid_width - 1) * (center_x / original_input_image_width)))
-                                    center_y_grid = int(np.floor((output_grid_height - 1) * (center_y / original_input_image_height)))
-
-                                    groundtruth_label_matrix[center_y_grid, center_x_grid, 0] = objectness
-                                    groundtruth_label_matrix[center_y_grid, center_x_grid, class_type] = 1.0
-
-                                    cv.circle(test_img, (int(original_input_image_width * (center_x_grid / output_grid_width)), int(original_input_image_height * (center_y_grid / output_grid_height))), 10, (0, 255, 0), 3)
-                                    '''
-
-                                    #cv.circle(test_img, (int(center_x), int(center_y)), 10, (0, 255, 0), 3)
-
-                                    print(objectness)
+                                    #elif label[4] == '2':     pass      # Largely Occuluded
+                                    elif label[4] == '3':     pass      # Unknown
                             
-                            print(test_img.dtype)
-                            temp_groundtruth_label_matrix = cv.resize(temp_groundtruth_label_matrix, (original_input_image_width, original_input_image_height))
-                            print(temp_groundtruth_label_matrix.shape)
-                            print(test_img.shape)
-                            added_img = cv.addWeighted(test_img, 0.2, temp_groundtruth_label_matrix, 0.6, 0)
-                            cv.imwrite('./test.png', added_img)
+                            if self.verbose == 'high':
+                                groundtruth_objectness_mask_img = cv.resize(groundtruth_objectness_mask_img, (target_input_image_width, target_input_image_height), interpolation=cv.INTER_AREA)
+                            else:
+                                groundtruth_objectness_mask_img = cv.resize(groundtruth_objectness_mask_img, (target_input_image_width, target_input_image_height), interpolation=cv.INTER_AREA)
+                                groundtruth_objectness_mask_img = np.expand_dims(groundtruth_objectness_mask_img, axis=2)
+                                
+                            self.local_print(groundtruth_objectness_mask_img.shape, level='high')
 
-                            print(groundtruth_label_matrix)
+                            groundtruth_class_label_img = cv.resize(groundtruth_class_label_img, (target_input_image_width, target_input_image_height), interpolation=cv.INTER_AREA)
+                            groundtruth_class_label_img = np.expand_dims(groundtruth_class_label_img, axis=2)
+                            self.local_print(groundtruth_class_label_img.shape, level='high')
 
-                            print('----------------')
+                            groundtruth_label_matrix = np.concatenate((groundtruth_objectness_mask_img, groundtruth_class_label_img), axis=2)
+
+                            if self.verbose == 'high':
+                                added_img = cv.addWeighted(test_img, 0.2, groundtruth_objectness_mask_img, 0.6, 0)
+                                cv.imwrite('./test.png', added_img)
+
+                            self.local_print('groundtruth_label_matrix : {}'.format(groundtruth_label_matrix.shape), level='high')
+                            self.local_print('-------------------------', level='high')
 
                             ### Input Image Stack Write ###
-                            img_path_list = [img_base_path + '/' + prev_img, 
-                                             img_base_path + '/' + current_img]
+                            img_path_list = [prev_img_base_path + '/' + prev_img, 
+                                             current_img_base_path + '/' + current_img]
 
                             img_path_group.create_dataset(name=str(data_idx).zfill(10),
                                                           data=img_path_list,
