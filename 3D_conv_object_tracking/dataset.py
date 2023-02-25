@@ -10,8 +10,8 @@ import torch.utils.data
 class object_tracking_dataset(torch.utils.data.Dataset):
 
     def __init__(self, dataset_save_path='',
-                       target_input_image_height=98,
-                       target_input_image_width=320,
+                       target_input_image_height=256,
+                       target_input_image_width=256,
                        data_augmentation_prob=0.1,
                        mode='train',
                        verbose='low'):
@@ -57,59 +57,31 @@ class object_tracking_dataset(torch.utils.data.Dataset):
         ### Input Image Preparation ###
         img_path_list = self.img_path_group[idx][()]
 
-        img_path_prev = str(img_path_list[0], 'utf-8')
-        img_path_current = str(img_path_list[1], 'utf-8')
+        img_path = str(img_path_list[0], 'utf-8')
 
-        self.local_print(img_path_prev, level='high')
-        self.local_print(img_path_current, level='high')
+        self.local_print(img_path, level='high')
 
-        prob = np.random.rand(1)[0]
-
-        input_img_current = cv.imread(img_path_current, cv.IMREAD_COLOR)
-        input_img_current = cv.resize(input_img_current, (self.target_input_image_width, self.target_input_image_height), interpolation=cv.INTER_AREA)
+        input_img = cv.imread(img_path, cv.IMREAD_COLOR)
+        self.local_print('Original Input Image Shape : {}'.format(input_img.shape), level='high')
         
-        if self.data_augmentation_prob >= prob: input_img_current = cv.flip(input_img_current, 1)
+        input_img = cv.resize(input_img, (self.target_input_image_width, self.target_input_image_height), interpolation=cv.INTER_AREA)
         
-        input_img_current = np.transpose(input_img_current, (2, 0, 1))
-        input_img_current = input_img_current / 255
-        self.local_print('input_img_current : {}'.format(input_img_current.shape), level='high')
+        # 3 Channel Input Image (Channel Last)
+        input_img = np.transpose(input_img, (2, 0, 1))
+        input_img = input_img / 255
+        self.local_print('input_img : {}'.format(input_img.shape), level='high')
         
         ### Groundtruth Label Preparation ##########################
         groundtruth_label_matrix = self.groundtruth_group[idx][()]
 
         groundtruth_objectness_mask_img = groundtruth_label_matrix[:, :, 0]
-        
-        if self.data_augmentation_prob >= prob: groundtruth_objectness_mask_img = cv.flip(groundtruth_objectness_mask_img, 1)
+        self.local_print('groundtruth_objectness_mask_img : {}'.format(groundtruth_objectness_mask_img.shape), level='high')
+
+        groundtruth_objectness_mask_img = np.expand_dims(groundtruth_objectness_mask_img, axis=0)
+        self.local_print('groundtruth_objectness_mask_img : {}'.format(groundtruth_objectness_mask_img.shape), level='high')
         ############################################################
 
-        return input_img_current, groundtruth_objectness_mask_img
-
-        '''
-        input_img_prev = cv.imread(img_path_prev, cv.IMREAD_COLOR)
-        input_img_prev = cv.resize(input_img_prev, (self.target_input_image_width, self.target_input_image_height))
-        input_img_prev = np.transpose(input_img_prev, (2, 0, 1))
-        input_img_prev = np.expand_dims(input_img_prev, axis=1)
-        input_img_prev = input_img_prev / 255
-        self.local_print('input_img_prev : {}'.format(input_img_prev.shape), level='high')
-
-        input_img_current = cv.imread(img_path_current, cv.IMREAD_COLOR)
-        input_img_current = cv.resize(input_img_current, (self.target_input_image_width, self.target_input_image_height))
-        input_img_current = np.transpose(input_img_current, (2, 0, 1))
-        input_img_current = np.expand_dims(input_img_current, axis=1)
-        input_img_current = input_img_current / 255
-        self.local_print('input_img_current : {}'.format(input_img_current.shape), level='high')
-        
-        stacked_input_img = np.concatenate((input_img_prev, input_img_current), axis=1)
-        self.local_print('stacked_input_img : {}'.format(stacked_input_img.shape), level='high')
-
-        ### Groundtruth Label Preparation ##########################
-        groundtruth_label_matrix = self.groundtruth_group[idx][()]
-
-        groundtruth_label_matrix = np.transpose(groundtruth_label_matrix, (2, 0, 1))
-        ############################################################
-        
-        return stacked_input_img, groundtruth_label_matrix
-        '''
+        return input_img, groundtruth_objectness_mask_img
         
     def __len__(self):
 

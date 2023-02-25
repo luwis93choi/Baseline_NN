@@ -96,6 +96,12 @@ class Object_Tracking_VIT(nn.Module):
 
         self.verbose = verbose
 
+        self.input_width = input_width
+        self.input_height = input_height
+
+        self.patch_width = patch_width
+        self.patch_height = patch_height
+
         if (input_width % patch_width) != 0:
             raise Exception('Input width is not divisible by patch width')
 
@@ -112,6 +118,7 @@ class Object_Tracking_VIT(nn.Module):
         elif reduce_channel == True:
             self.embedding_size = patch_width * patch_height
 
+        '''
         # Positional Embedding Generation (Reference : https://medium.com/mlearning-ai/vision-transformers-from-scratch-pytorch-a-step-by-step-guide-96c3313c2e0c)
         self.single_positional_embedding = torch.ones(1, self.total_patch_num, self.embedding_size)
 
@@ -120,13 +127,17 @@ class Object_Tracking_VIT(nn.Module):
                 self.single_positional_embedding[0][i][j] = np.sin(i / (10000 ** (j/self.embedding_size))) if j % 2 == 0 else np.cos(i / (10000 ** ((j - i) / self.embedding_size)))
 
         self.positional_embedding = nn.Parameter(self.single_positional_embedding.repeat(input_batchsize, 1, 1))
+        '''
 
-        #self.positional_embedding = nn.Parameter(torch.zeros(input_batchsize, self.total_patch_num + 1, self.embedding_size))
+        #self.positional_embedding = nn.Parameter(torch.zeros(input_batchsize, self.total_patch_num, self.embedding_size))
+
+        # Sequential Postional Embedding (Reference : https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial15/Vision_Transformer.html)
+        self.positional_embedding = nn.Parameter(torch.randn(1, self.total_patch_num, self.embedding_size))
 
         self.patch_embedder_layer = nn.Conv2d(in_channels=input_channel, out_channels=self.embedding_size, 
                                               kernel_size=(patch_height, patch_width), 
                                               stride=(patch_height, patch_width), padding=0, bias=transformer_embedding_bias)
-
+        
         self.flatten_layer = nn.Flatten(start_dim=2)
 
         unit_transformer_encoder_layer = nn.TransformerEncoderLayer(d_model=self.embedding_size,
@@ -139,30 +150,70 @@ class Object_Tracking_VIT(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer=unit_transformer_encoder_layer,
                                                          num_layers=transformer_encoder_layer_num)
 
+        self.fc_dropout = nn.Dropout(p=transformer_dropout)
+        self.grid_fc = nn.Linear(in_features=self.embedding_size, out_features=1, bias=True)
+
+    # Image Patch Vector Generation (Refernece : https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial15/Vision_Transformer.html)
+    def img_to_patch(self, x, patch_size, flatten_channels=True):
+        """
+        Inputs:
+            x - torch.Tensor representing the image of shape [B, C, H, W]
+            patch_size - Number of pixels per dimension of the patches (integer)
+            flatten_channels - If True, the patches will be returned in a flattened format
+                            as a feature vector instead of a image grid.
+        """
+        B, C, H, W = x.shape
+        x = x.reshape(B, C, H//patch_size, patch_size, W//patch_size, patch_size)
+        self.local_print('img_patch_batch : {}'.format(x.size()), level='high')
+
+        x = x.permute(0, 2, 4, 1, 3, 5) # [B, H', W', C, p_H, p_W]
+        self.local_print('img_patch_batch after dim swap : {}'.format(x.size()), level='high')
+
+        x = x.flatten(1,2)              # [B, H'*W', C, p_H, p_W]
+        self.local_print('img_patch_batch after Patch Flatten : {}'.format(x.size()), level='high')
+
+        if flatten_channels:
+            x = x.flatten(2,4)          # [B, H'*W', C*p_H*p_W]
+            self.local_print('img_patch_batch after Channel Flatten : {}'.format(x.size()), level='high')
+
+        return x
+
     def forward(self, input_img):
 
         self.local_print('input_img : {}'.format(input_img.size()), level='high')
 
-        patch_embeddings = self.patch_embedder_layer(input_img)
-        self.local_print('patch_embeddings : {}'.format(patch_embeddings.size()), level='high')
+        img_patches = self.img_to_patch(input_img, self.patch_width, flatten_channels=True)
+        self.local_print('img_to_patch : {}'.format(img_patches.size()), level='high')
 
-        flatten_patch_embeddings = self.flatten_layer(patch_embeddings)
-        self.local_print('flatten_patch_embeddings : {}'.format(flatten_patch_embeddings.size()), level='high')
+        #patch_embeddings = self.patch_embedder_layer(input_img)
+        #self.local_print('patch_embeddings : {}'.format(patch_embeddings.size()), level='high')
 
-        flatten_patch_embeddings = torch.permute(flatten_patch_embeddings, (0, 2, 1))
-        self.local_print('flatten_patch_embeddings after dim swap : {}'.format(flatten_patch_embeddings.size()), level='high')
+        #flatten_patch_embeddings = self.flatten_layer(patch_embeddings)
+        #self.local_print('flatten_patch_embeddings : {}'.format(flatten_patch_embeddings.size()), level='high')
+
+        #flatten_patch_embeddings = torch.permute(flatten_patch_embeddings, (0, 2, 1))
+        #self.local_print('flatten_patch_embeddings after dim swap : {}'.format(flatten_patch_embeddings.size()), level='high')
 
         self.local_print('self.positional_embedding : {}'.format(self.positional_embedding.size()), level='high')
 
-        patch_embeddings_added_with_positional_embeddings = flatten_patch_embeddings + self.positional_embedding
+        patch_embeddings_added_with_positional_embeddings = img_patches + self.positional_embedding
         self.local_print('patch_embeddings_added_with_positional_embeddings : {}'.format(patch_embeddings_added_with_positional_embeddings.size()), level='high')
 
         transformer_encoder_output = self.transformer_encoder(patch_embeddings_added_with_positional_embeddings)
         self.local_print('transformer_encoder_output : {}'.format(transformer_encoder_output.size()), level='high')
 
+        out_fc_dropout = self.fc_dropout(transformer_encoder_output)
+        self.local_print('out_fc_dropout : {}'.format(out_fc_dropout.size()), level='high')
+
+        grid_fc_out = self.grid_fc(out_fc_dropout)
+        self.local_print('grid_fc_out : {}'.format(grid_fc_out.size()), level='high')
+
+        reconstructed_grid_fc_out = torch.reshape(grid_fc_out, (-1, self.input_width//self.patch_width, self.input_height//self.patch_height))
+        self.local_print('reconstructed_grid_fc_out : {}'.format(reconstructed_grid_fc_out.size()), level='high')
+
         self.local_print('--------------------------', level='high')
 
-        return transformer_encoder_output
+        return reconstructed_grid_fc_out
 
     def local_print(self, sen, level='low'):
 
@@ -170,7 +221,73 @@ class Object_Tracking_VIT(nn.Module):
         elif self.verbose == 'low':
             if level == 'low': print(sen)
 
+class Object_Tracking_2DConvNet(nn.Module):
             
+    def __init__(self, bias=True, verbose='low'):
+
+        super(Object_Tracking_2DConvNet, self).__init__()
+
+        self.verbose = verbose
+
+        def Conv_2D_Block(in_channels, out_channels, kernel_size=3, dilation=1, stride=1, padding=1, bias=True, 
+                          pooling_type='max', pooling_kernel_size=2):
+            layers = []
+            layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
+                                 kernel_size=kernel_size, dilation=dilation, stride=stride, padding=padding,
+                                 bias=bias)]
+            layers += [nn.BatchNorm2d(num_features=out_channels)]
+            layers += [nn.LeakyReLU()]
+
+            if pooling_type == 'max':
+                layers += [nn.MaxPool2d(kernel_size=pooling_kernel_size)]
+            elif pooling_type == 'avg':
+                layers += [nn.AvgPool2d(kernel_size=pooling_kernel_size)]
+
+            layer_module = nn.Sequential(*layers)
+
+            return layer_module
+        
+        self.conv2d_1 = Conv_2D_Block(in_channels=3, out_channels=16, kernel_size=3, dilation=1, stride=1, padding=1, bias=bias,
+                                      pooling_type='max', pooling_kernel_size=2)
+        
+        self.conv2d_2 = Conv_2D_Block(in_channels=16, out_channels=32, kernel_size=3, dilation=1, stride=1, padding=1, bias=bias,
+                                      pooling_type='max', pooling_kernel_size=2)
+        
+        self.conv2d_3 = Conv_2D_Block(in_channels=32, out_channels=64, kernel_size=3, dilation=1, stride=1, padding=1, bias=bias,
+                                      pooling_type='max', pooling_kernel_size=2)
+        
+        self.conv2d_4 = Conv_2D_Block(in_channels=64, out_channels=128, kernel_size=3, dilation=1, stride=1, padding=2, bias=bias,
+                                      pooling_type='none', pooling_kernel_size=2)
+        
+        self.conv_fc = nn.Conv2d(in_channels=128, out_channels=1, kernel_size=3, dilation=1, stride=1, padding=0, bias=bias)
+
+    def forward(self, input_img):
+        
+        self.local_print('input_img : {}'.format(input_img.size()), level='high')
+
+        out_conv2d_1 = self.conv2d_1(input_img)
+        self.local_print('out_conv2d_1 : {}'.format(out_conv2d_1.size()), level='high')
+        
+        out_conv2d_2 = self.conv2d_2(out_conv2d_1)
+        self.local_print('out_conv2d_2 : {}'.format(out_conv2d_2.size()), level='high')
+
+        out_conv2d_3 = self.conv2d_3(out_conv2d_2)
+        self.local_print('out_conv2d_3 : {}'.format(out_conv2d_3.size()), level='high')
+
+        out_conv2d_4 = self.conv2d_4(out_conv2d_3)
+        self.local_print('out_conv2d_4 : {}'.format(out_conv2d_4.size()), level='high')
+
+        out_conv_fc = self.conv_fc(out_conv2d_4)
+        self.local_print('out_conv_fc : {}'.format(out_conv_fc.size()), level='high')
+
+        return out_conv_fc
+
+    def local_print(self, sen, level='low'):
+
+        if self.verbose == 'high': print(sen)
+        elif self.verbose == 'low':
+            if level == 'low': print(sen)
+
 class Object_Tracking_UNet(nn.Module):
 
     def __init__(self, bias=True, dropout_prob=0.1, verbose='low'):
